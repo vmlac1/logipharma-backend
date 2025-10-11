@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
-const PORT = process.env.PORT || 3000; // O Render usa a variável de ambiente PORT
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -10,19 +10,17 @@ let couriers = {}; // Usamos um objeto para acesso mais rápido
 
 // Endpoint para o PAINEL pedir os dados
 app.get('/api/couriers/status', (req, res) => {
-    // Adiciona uma propriedade 'isActive' a cada entregador
     const allCouriers = Object.values(couriers).map(c => {
-        // Considera inativo se não houver atualização há mais de 2 minutos
-        const isActive = (Date.now() - c.lastUpdate) < 120000;
-        return { ...c, isActive };
+        const isActive = (Date.now() - c.lastUpdate) < 120000; // 2 minutos de inatividade
+        const onlineTime = Math.floor((Date.now() - c.startTime) / 60000); // Tempo online em minutos
+        return { ...c, isActive, onlineTime };
     });
-    console.log(`Enviando status de ${allCouriers.length} entregadores para o painel.`);
     res.json(allCouriers);
 });
 
 // Endpoint para o TRACKER enviar a sua localização
 app.post('/api/update-location', (req, res) => {
-    const { courierId, name, lat, lng, battery } = req.body;
+    const { courierId, name, lat, lng, battery, status } = req.body;
 
     if (!courierId || !name || lat === undefined || lng === undefined) {
         return res.status(400).send('Dados inválidos.');
@@ -30,7 +28,12 @@ app.post('/api/update-location', (req, res) => {
 
     const now = Date.now();
     
-    // Se o entregador já existe, atualiza os dados. Se não, cria um novo.
+    // Se o entregador é novo, define a sua hora de início
+    if (!couriers[courierId]) {
+        couriers[courierId] = { startTime: now };
+    }
+
+    // Atualiza os dados
     couriers[courierId] = {
         ...couriers[courierId],
         id: courierId,
@@ -38,15 +41,15 @@ app.post('/api/update-location', (req, res) => {
         lat: lat,
         lng: lng,
         battery: battery,
-        status: "Em Entrega",
+        status: status || 'Em Entrega', // Usa o status enviado ou um padrão
         lastUpdate: now
     };
     
-    console.log(`Recebida atualização do Entregador ${name} (${courierId}).`);
+    console.log(`Recebida atualização do Entregador ${name} (${courierId}). Status: ${status}`);
     res.status(200).send('Localização recebida com sucesso.');
 });
 
-// NOVO Endpoint para REMOVER um entregador
+// Endpoint para REMOVER um entregador
 app.post('/api/couriers/remove/:id', (req, res) => {
     const { id } = req.params;
     if (couriers[id]) {
@@ -58,10 +61,8 @@ app.post('/api/couriers/remove/:id', (req, res) => {
     }
 });
 
-
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(PORT, () => {
     console.log(`Servidor LogiPharma a funcionar na porta ${PORT}`);
-    console.log('A aguardar dados dos rastreadores...');
 });
 
